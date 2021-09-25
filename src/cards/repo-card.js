@@ -1,13 +1,16 @@
+const toEmoji = require("emoji-name-map");
 const {
   kFormatter,
   encodeHTML,
   getCardColors,
-  FlexLayout,
+  flexLayout,
   wrapTextMultiline,
+  measureText,
 } = require("../common/utils");
-const icons = require("../common/icons");
+const I18n = require("../common/I18n");
 const Card = require("../common/Card");
-const toEmoji = require("emoji-name-map");
+const icons = require("../common/icons");
+const { repoCardLocales } = require("../translations");
 
 const renderRepoCard = (repo, options = {}) => {
   const {
@@ -21,12 +24,16 @@ const renderRepoCard = (repo, options = {}) => {
     forkCount,
   } = repo;
   const {
+    hide_border = false,
     title_color,
     icon_color,
     text_color,
     bg_color,
     show_owner,
     theme = "default_repocard",
+    border_radius,
+    border_color,
+    locale,
   } = options;
 
   const header = show_owner ? nameWithOwner : name;
@@ -49,20 +56,27 @@ const renderRepoCard = (repo, options = {}) => {
   const height =
     (descriptionLines > 1 ? 120 : 110) + descriptionLines * lineHeight;
 
-  // returns theme based colors with proper overrides and defaults
-  const { titleColor, textColor, iconColor, bgColor } = getCardColors({
-    title_color,
-    icon_color,
-    text_color,
-    bg_color,
-    theme,
+  const i18n = new I18n({
+    locale,
+    translations: repoCardLocales,
   });
+
+  // returns theme based colors with proper overrides and defaults
+  const { titleColor, textColor, iconColor, bgColor, borderColor } =
+    getCardColors({
+      title_color,
+      icon_color,
+      text_color,
+      bg_color,
+      border_color,
+      theme,
+    });
 
   const totalStars = kFormatter(stargazers.totalCount);
   const totalForks = kFormatter(forkCount);
 
   const getBadgeSVG = (label) => `
-    <g data-testid="badge" class="badge" transform="translate(320, 38)">
+    <g data-testid="badge" class="badge" transform="translate(320, -18)">
       <rect stroke="${textColor}" stroke-width="1" width="70" height="20" x="-12" y="-14" ry="10" rx="10"></rect>
       <text
         x="23" y="-5"
@@ -78,47 +92,57 @@ const renderRepoCard = (repo, options = {}) => {
 
   const svgLanguage = primaryLanguage
     ? `
-    <g data-testid="primary-lang" transform="translate(30, 0)">
+    <g data-testid="primary-lang">
       <circle data-testid="lang-color" cx="0" cy="-5" r="6" fill="${langColor}" />
       <text data-testid="lang-name" class="gray" x="15">${langName}</text>
     </g>
     `
     : "";
 
+  const iconSize = 16;
   const iconWithLabel = (icon, label, testid) => {
-    return `
-      <svg class="icon" y="-12" viewBox="0 0 16 16" version="1.1" width="16" height="16">
+    const iconSvg = `
+      <svg class="icon" y="-12" viewBox="0 0 16 16" version="1.1" width="${iconSize}" height="${iconSize}">
         ${icon}
       </svg>
-      <text data-testid="${testid}" class="gray" x="25">${label}</text>
     `;
+    const text = `<text data-testid="${testid}" class="gray">${label}</text>`;
+    return flexLayout({ items: [iconSvg, text], gap: 20 }).join("");
   };
+
   const svgStars =
     stargazers.totalCount > 0 &&
     iconWithLabel(icons.star, totalStars, "stargazers");
   const svgForks =
     forkCount > 0 && iconWithLabel(icons.fork, totalForks, "forkcount");
 
-  const starAndForkCount = FlexLayout({
-    items: [svgStars, svgForks],
-    gap: 65,
+  const starAndForkCount = flexLayout({
+    items: [svgLanguage, svgStars, svgForks],
+    sizes: [
+      measureText(langName, 12),
+      iconSize + measureText(`${totalStars}`, 12),
+      iconSize + measureText(`${totalForks}`, 12),
+    ],
+    gap: 25,
   }).join("");
 
   const card = new Card({
-    title: header,
+    defaultTitle: header,
     titlePrefixIcon: icons.contribs,
     width: 400,
     height,
+    border_radius,
     colors: {
       titleColor,
       textColor,
       iconColor,
       bgColor,
+      borderColor,
     },
   });
 
   card.disableAnimations();
-  card.setHideBorder(false);
+  card.setHideBorder(hide_border);
   card.setHideTitle(false);
   card.setCSS(`
     .description { font: 400 13px 'Segoe UI', Ubuntu, Sans-Serif; fill: ${textColor} }
@@ -131,9 +155,9 @@ const renderRepoCard = (repo, options = {}) => {
   return card.render(`
     ${
       isTemplate
-        ? getBadgeSVG("Template")
+        ? getBadgeSVG(i18n.t("repocard.template"))
         : isArchived
-        ? getBadgeSVG("Archived")
+        ? getBadgeSVG(i18n.t("repocard.archived"))
         : ""
     }
 
@@ -143,15 +167,8 @@ const renderRepoCard = (repo, options = {}) => {
         .join("")}
     </text>
 
-    <g transform="translate(0, ${height - 75})">
-      ${svgLanguage}
-
-      <g
-        data-testid="star-fork-group" 
-        transform="translate(${primaryLanguage ? 155 - shiftText : 25}, 0)"
-      >
-        ${starAndForkCount}
-      </g>
+    <g transform="translate(30, ${height - 75})">
+      ${starAndForkCount}
     </g>
   `);
 };
